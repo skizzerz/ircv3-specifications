@@ -39,7 +39,7 @@ copyrights:
 
 This is a work-in-progress specification.
 
-Software implementing this work-in-progress specification MUST NOT use the unprefixed `metadata` capability name. Instead, implementations SHOULD use the `draft/metadata-2` capability name to be interoperable with other software implementing a compatible work-in-progress version.
+Software implementing this work-in-progress specification MUST NOT use the unprefixed `metadata` capability name. Instead, implementations SHOULD use the `draft/metadata-3` capability name to be interoperable with other software implementing a compatible work-in-progress version.
 
 The final version of the specification will use an unprefixed capability name.
 
@@ -64,23 +64,23 @@ On joining a server, clients have to configure their 'metadata key subscriptions
 
 Servers may additionally restrict the visibility of metadata keys to certain subsets of users (e.g. based on operator status). A *visible key* is a metadata key that the user has permissions to view, according to the server's implementation-defined means.
 
-A *metadata-aware client* is a client who has negotiated both the `draft/metadata-2` capability and the `batch` capability.
+A *metadata-aware client* is a client who has negotiated both the `draft/metadata-3` capability and the `batch` capability.
 
 ## Relation with other specifications
 
-This specification depends on the [`batch`](../extensions/batch.html) capability which MUST be negotiated to use `draft/metadata-2`. The order of capability negotiation is not significant and MUST NOT be enforced.
+This specification depends on the [`batch`](../extensions/batch.html) capability which MUST be negotiated to use `draft/metadata-3`. The order of capability negotiation is not significant and MUST NOT be enforced.
 
 This specification also uses the [standard replies](../extensions/standard-replies.html) framework.
 
-Clients MUST NOT request both `metadata-notify` and `draft/metadata-2`. Servers MUST NOT accept these requests either.
+Clients MUST NOT request more than one of `metadata-notify`, `draft/metadata-2`, and `draft/metadata-3`. Servers MUST NOT accept these requests either.
 
-## `draft/metadata-2` Capability
+## `draft/metadata-3` Capability
 
-The `draft/metadata-2` capability indicates that a server supports metadata, and provides any limits and information about the system that clients must be aware of. Clients MUST request this capability in order to receive [`METADATA` notifications](#notifications).
+The `draft/metadata-3` capability indicates that a server supports metadata, and provides any limits and information about the system that clients must be aware of. Clients MUST request this capability in order to receive [`METADATA` notifications](#notifications).
 
-The ABNF format of the `draft/metadata-2` capability is:
+The ABNF format of the `draft/metadata-3` capability is:
 
-    capability ::= 'draft/metadata-2' ['=' tokens]
+    capability ::= 'draft/metadata-3' ['=' tokens]
     tokens     ::= token [',' token]*
     token      ::= key ['=' value]
     key        ::= <sequence of one or more a-z0-9_./->
@@ -94,18 +94,18 @@ These are the defined tokens:
 * `max-key-bytes`: The maximum size of keys a client is allowed to set. Servers MAY send longer keys.
 * `max-value-bytes`: The maximum size of values a client is allowed to set. Servers MAY send longer values.
 
-Clients MUST silently ignore any unknown tokens. If the server does not provide a token indicating one of the above limits, clients SHOULD assume that particular item has no limit.
+Clients MUST silently ignore any unknown tokens. If the server does not provide a token indicating one of the above maximum limits, clients SHOULD assume that particular item has no limit.
 
-If a client removes this capability from themselves, servers MUST clear that client's subscription list.
+If a client removes this capability or the batch capability from themselves, servers MUST clear that client's subscription list.
 
 *[[Begin non-normative examples--*
 
 In both of these examples, max-subs is specified but other tokens are not. Clients should assume that max-keys, max-key-bytes, and max-value-bytes have no limit. In practice, the key and value must still fit on a single IRC protocol line despite not having any server-specified limit.
 
     C: CAP LS 302
-    S: CAP * LS :userhost-in-names draft/metadata-2=foo,max-subs=50,bar multi-prefix
+    S: CAP * LS :userhost-in-names draft/metadata-3=foo,max-subs=50,bar multi-prefix
     C: CAP LS 302
-    S: CAP * LS :draft/metadata-2=max-subs=25 multi-prefix invite-notify
+    S: CAP * LS :draft/metadata-3=max-subs=25 multi-prefix invite-notify
 
 *--End non-normative examples]]*
 
@@ -193,7 +193,7 @@ Servers MUST send notifications to subscribers the key is visible to for changes
 
 The notification framework provides clients updates on metadata keys for visible targets, but does not share any information about keys already set before the target became visible to the client. This section describes events outside of the `METADATA` command that trigger automatic synchronization of metadata so that the client has a usable baseline to work from.
 
-If the `draft/metadata-2` capability was negotiated during connection registration, servers MUST send clients a list of their current metadata (any metadata stored by the server or by services, plus any metadata set by the client during connection registration via `before-connect`) in a `metadata` batch with their own nick as target as part of the registration burst, i.e. before `RPL_ENDOFMOTD` or `ERR_NOMOTD`. This batch MUST include all visible keys set on the client, irrespective of whether the client has subscribed to that key.
+If the `draft/metadata-3` capability was negotiated during connection registration, servers MUST send clients a list of their current metadata (any metadata stored by the server or by services, plus any metadata set by the client during connection registration via `before-connect`) in a `metadata` batch with their own nick as target as part of the registration burst, i.e. before `RPL_ENDOFMOTD` or `ERR_NOMOTD`. This batch MUST include all visible keys set on the client, irrespective of whether the client has subscribed to that key.
 
 When server sends `730 RPL_MONONLINE` to a metadata-aware client (see [`MONITOR`](../extensions/monitor.html#monitor-command)), the server MUST additionally send either a `metadata` batch containing the monitored user's metadata to the client or a `774 RPL_METADATASYNCLATER` message to indicate postponed synchronization. If the server sends a batch, the batch MUST be identical to what would be returned if [`METADATA SYNC`](#metadata-sync) was issued against that target.
 
@@ -211,7 +211,7 @@ Clients SHOULD deduplicate `774 RPL_METADATASYNCLATER` numerics that they receiv
 
 These examples assume the client has previously enabled the [no-implicit-names](../extensions/no-implicit-names.html) capability and has subscribed to the `display-name` metadata key for brevity.
 
-A metadata-aware client joins multiple channels and the server responds with `774 RPL_METADATASYNCLATER` to each of those joins with a target of `*`. The client deduplicates these and sends only one `METADATA * SYNC` after all channel joins are complete. This server implementation additionally responds with `766 RPL_KEYNOTSET` for subscribed keys that are not set on the target or are not visible to the user.
+A metadata-aware client joins multiple channels and the server responds with `774 RPL_METADATASYNCLATER` to each of those joins with a target of `*ALL`. The client deduplicates these and sends only one `METADATA *ALL SYNC` after all channel joins are complete. This server implementation additionally responds with `766 RPL_KEYNOTSET` for subscribed keys that are not set on the target or are not visible to the user.
 
     C: JOIN #chan1,#chan2,#chan3,#chan4
     S: :modernclient!modernclient@example.com JOIN #chan1
@@ -222,8 +222,8 @@ A metadata-aware client joins multiple channels and the server responds with `77
     S: :irc.example.com 774 modernclient * 0 :Please synchronize metadata later
     S: :modernclient!modernclient@example.com JOIN #chan4
     S: :irc.example.com 774 modernclient * 0 :Please synchronize metadata later
-    C: METADATA * SYNC
-    S: BATCH +r2Nla metadata *
+    C: METADATA *ALL SYNC
+    S: BATCH +r2Nla metadata *ALL
     S: @batch=r2Nla :irc.example.com 761 modernclient #chan1 display-name * :channel 1️⃣
     S: @batch=r2Nla :irc.example.com 761 modernclient #chan2 display-name * :channel 2️⃣
     S: @batch=r2Nla :irc.example.com 766 modernclient #chan3 display-name :Key not set
@@ -342,7 +342,7 @@ After finishing sending responses as described above, if the client has complete
 
 *[[Begin non-normative example--*
 
-The client is joined to #chan (sharing the channel with userA, userB, and userC) and additionally has userD on their `MONITOR` list, who is currently online. The server is configured to allow a maximum of 3 subscriptions (advertising `max-subs=3` in the `draft/metadata-2` CAP value).
+The client is joined to #chan (sharing the channel with userA, userB, and userC) and additionally has userD on their `MONITOR` list, who is currently online. The server is configured to allow a maximum of 3 subscriptions (advertising `max-subs=3` in the `draft/metadata-3` CAP value).
 
     C: METADATA * SUB display-name status super-secret-key avatar
     S: :irc.example.com 770 modernclient display-name status super-secret-key
@@ -823,9 +823,9 @@ Because the client does not have permission to view any of the newly-added keys,
 `METADATA SUB` does not generate any `metadata` batches or `774 RPL_METADATASYNCLATER` when used before connection registration has completed.
 
     C: CAP LS 302
-    S: :metadata.test CAP * LS :batch message-tags draft/metadata-2=before-connect,max-subs=100,max-keys=100
-    C: CAP REQ :batch message-tags draft/metadata-2
-    S: :metadata.test CAP * ACK :batch message-tags draft/metadata-2
+    S: :metadata.test CAP * LS :batch message-tags draft/metadata-3=before-connect,max-subs=100,max-keys=100
+    C: CAP REQ :batch message-tags draft/metadata-3
+    S: :metadata.test CAP * ACK :batch message-tags draft/metadata-3
     C: METADATA * SUB display-name
     S: :metadata.test 770 * display-name
     C: METADATA * SET display-name :a b c
@@ -875,11 +875,12 @@ This specification replaces an earlier deprecated `metadata-notify` specificatio
 * The `KEY_INVALID` standard reply code has been renamed to `INVALID_KEY` for better consistency between this specification and other specifications.
 * The `RATE_LIMITED` standard reply code is now specified for every subcommand.
 * The `INVALID_PARAMS` standard reply code has been added for all other errors with `METADATA` command parameters.
-* Standard reply codes have been adjusted to use `WARN` and `NOTE` when and where appropriate. `FAIL` is reserved for when the entire command cannot proceed due to an error. `WARN` is used when a portion of a command cannot proceed but other parts may still proceed. `NOTE` is used for ancillary data when the command is fully successful.
+* Standard reply codes have been adjusted to use `WARN` and `NOTE` when and where appropriate. `FAIL` is reserved for when the entire command cannot proceed due to an error. `WARN` is used when a portion of a command cannot proceed but other parts may still proceed. `NOTE` is used when a portion of a command is fully successful but needs ancillary data.
 * The `*ALL` target has been specified for `METADATA SYNC` to synchronize all visible targets.
 * Servers sending either a `metadata` batch or `774 RPL_METADATASYNCLATER` upon `JOIN`, `730 RPL_MONONLINE`, or when a client subscribes to a new key post-registration is no longer optional.
-* Clients removing the metadata CAP from themselves are now automatically unsubscribed from all keys.
+* Clients removing either the metadata or batch CAPs from themselves are now automatically unsubscribed from all keys.
 * The `<RetryAfter>` parameter of `774 RPL_METADATASYNCLATER` and `RATE_LIMITED` is no longer optional and must be a non-negative integer.
 * A `max-key-bytes` token was added to the CAP value to limit the maximum number of bytes a metadata key may consume.
 * The `before-connect` token in the CAP value list was clarified to not have its own value and that clients must ignore any value it carries.
-* Missing CAP value tokens which specify maximum lengths or numbers of entries are clarified to be unlimited.
+* CAP value tokens which specify maximum lengths or numbers of entries (i.e. `max-key-bytes`, `max-value-bytes`, `max-keys`, and `max-subs`) are clarified to be unlimited if those tokens are missing from the `CAP LS 302` response.
+* Empty strings are no longer valid metadata values; setting a metadata key to an empty string will now remove it (in addition to removal by omitting the value parameter entirely).
