@@ -49,11 +49,11 @@ This specification defines one ISUPPORT token. Servers MUST publish the `draft/A
 
 ## `draft/authtoken` batch type
 
-The `draft/authtoken` batch type has two parameters: the service key and the URL corresponding to that service key.
+The `draft/authtoken` batch type has one parameters: the service key.
 
 When sent by a server, this batch MUST contain only `TOKEN` messages.
 
-A client MUST negotiate the `draft/authtoken` capability before sending client-initiated `draft/authtoken` batches. A client-initiated `draft/authtoken` batch MUST contain only `TOKEN VALIDATE` commands, and these commands MUST omit the optional service and url parameters.
+A client MUST negotiate the `draft/authtoken` capability before sending client-initiated `draft/authtoken` batches. A client-initiated `draft/authtoken` batch MUST contain only `TOKEN VALIDATE` commands, and these commands MUST omit the service parameter.
 
 ## TOKEN command
 
@@ -62,7 +62,7 @@ This specification defines one new command named TOKEN. Clients do not need to n
 ```
 TOKEN SERVICELIST
 TOKEN GENERATE <service> [<scope>]
-TOKEN VALIDATE [<service> <url>] :<token>
+TOKEN VALIDATE [<service>] :<token>
 ```
 
 The `TOKEN VALIDATE` subcommand MUST be usable before a client has completed connection registration. Servers MAY choose to allow the use of the other `TOKEN` subcommands before clients complete connection registration as well.
@@ -85,7 +85,7 @@ TOKEN SERVICELIST
 
 The `TOKEN SERVICELIST` subcommand provides a list of all recognized service keys as well as their corresponding URLs. The description parameter provides some sort of description about the service. This command provides the main discoverability mechanism for which services are defined on the network, avoiding the need for per-service ISUPPORT tokens or informational capabilities.
 
-When receiving the `TOKEN SERVICELIST` command or providing an automatic service listing during a registration burst, the server MUST reply with a list of one or more services inside of a `draft/authtoken` batch. Both parameters in the `BATCH` message MUST be set to asterisk (`*`). If no services are defined, the server MUST reply with a `NOTE TOKEN NO_SERVICES` message.
+When receiving the `TOKEN SERVICELIST` command or providing an automatic service listing during a registration burst, the server MUST reply with a list of zero or more services inside of a `draft/authtoken` batch. The service parameter in the `BATCH` message MUST be set to asterisk (`*`). If no services are defined, the server MUST reply with a `NOTE TOKEN NO_SERVICES` message.
 
 Each service is a `TOKEN` message with the following syntax:
 
@@ -93,14 +93,14 @@ Each service is a `TOKEN` message with the following syntax:
 TOKEN SERVICE <service> <url> :<description>
 ```
 
-URLs MUST be 250 bytes in length or less, in order to ensure adequate space within the IRC protocol line for the description parameter in this message and the token parameter on other `TOKEN` messages for single-line tokens. The description parameter is a textual description of the service as defined by the server's operators.
+The description parameter is a textual description of the service as defined by the server's operators.
 
 *[[Begin non-normative example--*
 
 A user sends `TOKEN SERVICELIST` to list all services and receives the following output. One line is for the draft FILEHOST service and the other is for a user-defined QDB service under the vendor "example.com" namespace.
 
 ```
-BATCH +a draft/authtoken * *
+BATCH +a draft/authtoken *
 @batch=a TOKEN SERVICE FILEHOST https://upload.example.com :file upload service
 @batch=a TOKEN SERVICE example.com/QDB https://qdb.example.com :Quote Database
 BATCH -a
@@ -127,10 +127,10 @@ When a client sends the `TOKEN GENERATE` subcommand, the server responds with an
 Each line of output is a `TOKEN` message with the following syntax:
 
 ```
-TOKEN GENERATE <service> <url> :<token>
+TOKEN GENERATE <service> :<token>
 ```
 
-If the reply contains multiple lines (due to IRC line length limitations), the server MUST batch the reply in a `draft/authtoken` batch. The batch MUST have two parameters: the service and URL. `TOKEN GENERATE` messages inside of the batch SHOULD use asterisks (`*`) for the service and url parameters instead of specifying them again for each batch line. When receiving a batched reply, clients MUST concatenate the token parameters together without any separators to form the complete token. If a server does not support the draft/authtoken capability, it MUST NOT generate tokens that require multiple lines.
+If the reply contains multiple lines (due to IRC line length limitations), the server MUST batch the reply in a `draft/authtoken` batch. The batch MUST have the service key as its first parameter. `TOKEN GENERATE` messages inside of the batch SHOULD use asterisks (`*`) for the service parameter instead of specifying them again for each batch line. When receiving a batched reply, clients MUST concatenate the token parameters together without any separators to form the complete token. If a server does not support the draft/authtoken capability, it MUST NOT generate tokens that require multiple lines.
 
 Clients MUST NOT assume that the returned token has any particular format. Clients SHOULD re-run `TOKEN GENERATE` each time they need to interact with the external service, as there is no guarantee that a token is usable more than once.
 
@@ -141,21 +141,21 @@ If the server refuses to generate a token for any reason, it MUST send a `FAIL` 
 Simple example when a client sends `TOKEN GENERATE FILEHOST #chat`:
 
 ```
-TOKEN GENERATE FILEHOST https://upload.example.com :54a333f6e0c218382ab5f64c1135f07798d0255e87115c451ba67cc440f5ea84
+TOKEN GENERATE FILEHOST :54a333f6e0c218382ab5f64c1135f07798d0255e87115c451ba67cc440f5ea84
 ```
 
 Example of a token spanning multiple lines when a client sends `TOKEN GENERATE FILEHOST #chat`:
 
 ```
-BATCH +12345 draft/authtoken FILEHOST https://upload.example.com
-@batch=12345 TOKEN GENERATE * * :eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJodHRwczovL3VwbG9hZC5leGFtc
-@batch=12345 TOKEN GENERATE * * :GxlLmNvbSIsInN1YiI6Im1vb25tb29uIiwiYWNjb3VudCI6Im1vb25tb29uIiwic2VydmljZSI
-@batch=12345 TOKEN GENERATE * * :6IkZJTEVIT1NUIiwidGFyZ2V0IjoiI2NoYXQiLCJtZW1iZXJfb2YiOlsiI2NoYXQiLCIjaGVsc
-@batch=12345 TOKEN GENERATE * * :CIsIiNzZWNyZXQtZnJpZW5kLWNoYW5uZWwiXSwib3BlcmF0b3Jfb2YiOlsiI2NoYXQiLCIjY2h
-@batch=12345 TOKEN GENERATE * * :hdC1vcHMiLCIjaGVscCJdLCJvcGVyIjpmYWxzZSwicXVvdGEiOnsicGVyX3VwbG9hZCI6MTA0O
-@batch=12345 TOKEN GENERATE * * :DU3NjAwLCJ0b3RhbCI6MTYxMDYxMjczNn0sImlhdCI6MTc3NjAxNjU3NCwiZXhwIjoxNzc2MDE
-@batch=12345 TOKEN GENERATE * * :3NDc0fQ.wZi8okF7t1Ghk1jHLFyqhYwRZU4T3zG1B_qcCOz8gesMCbLhntccDoxDUgsV4OKHfQ
-@batch=12345 TOKEN GENERATE * * :3vjB2dpyD2gHyXcE0JJg
+BATCH +12345 draft/authtoken FILEHOST
+@batch=12345 TOKEN GENERATE * :eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJodHRwczovL3VwbG9hZC5leGFtc
+@batch=12345 TOKEN GENERATE * :GxlLmNvbSIsInN1YiI6Im1vb25tb29uIiwiYWNjb3VudCI6Im1vb25tb29uIiwic2VydmljZSI
+@batch=12345 TOKEN GENERATE * :6IkZJTEVIT1NUIiwidGFyZ2V0IjoiI2NoYXQiLCJtZW1iZXJfb2YiOlsiI2NoYXQiLCIjaGVsc
+@batch=12345 TOKEN GENERATE * :CIsIiNzZWNyZXQtZnJpZW5kLWNoYW5uZWwiXSwib3BlcmF0b3Jfb2YiOlsiI2NoYXQiLCIjY2h
+@batch=12345 TOKEN GENERATE * :hdC1vcHMiLCIjaGVscCJdLCJvcGVyIjpmYWxzZSwicXVvdGEiOnsicGVyX3VwbG9hZCI6MTA0O
+@batch=12345 TOKEN GENERATE * :DU3NjAwLCJ0b3RhbCI6MTYxMDYxMjczNn0sImlhdCI6MTc3NjAxNjU3NCwiZXhwIjoxNzc2MDE
+@batch=12345 TOKEN GENERATE * :3NDc0fQ.wZi8okF7t1Ghk1jHLFyqhYwRZU4T3zG1B_qcCOz8gesMCbLhntccDoxDUgsV4OKHfQ
+@batch=12345 TOKEN GENERATE * :3vjB2dpyD2gHyXcE0JJg
 BATCH -12345
 ```
 
@@ -166,18 +166,16 @@ BATCH -12345
 Syntax:
 
 ```
-TOKEN VALIDATE <service> <url> :<token>
+TOKEN VALIDATE <service> :<token>
 ```
 
 An external service may connect to the IRC server in order to validate a token by issuing the `TOKEN VALIDATE` subcommand. Since this command can be sent pre-registration, it does not need to complete the full connection registration process in order to validate a token and retrieve the claims associated with it.
 
 Servers MAY choose to implement additional restrictions before accepting a `TOKEN VALIDATE` command from a client, such as requiring the client connect from a specific IP range or authenticate with `PASS` or a TLS certificate fingerprint, in order to ensure that the client validating the token positively belongs to the service the token is associated with. If a server does this and the client is not allowed to validate the given token for the given service, the server MUST fail the request with a `FAIL TOKEN NO_PERMISSIONS <service>` message.
 
-`TOKEN VALIDATE` commands issued outside of a `draft/authtoken` batch MUST contain the service key and URL parameters.
+Servers MUST validate that the service parameter supplied in either the `draft/authtoken` client-initiated batch or the `TOKEN VALIDATE` command matches the service associated with the provided token at the time it was generated. If this validation fails, servers MUST reply with `FAIL TOKEN INVALID_TOKEN` instead of producing a list of claims, even if the token is otherwise valid.
 
-Servers MUST validate that the service and url parameter supplied in either the `draft/authtoken` client-initiated batch or the `TOKEN VALIDATE` command match the service and url associated with the provided token at the time it was generated. If this validation fails, servers MUST reply with `FAIL TOKEN INVALID_TOKEN` instead of producing a list of claims, even if the token is otherwise valid.
-
-When receiving the `TOKEN VALIDATE` command, if the token is valid and associated with the provided service key and URL, the server MUST reply with a list of zero or more claims for that token inside of a `draft/authtoken` batch with two parameters: the service key and the service's URL. Each claim is a `TOKEN` message with the following syntax:
+When receiving the `TOKEN VALIDATE` command, if the token is valid and associated with the provided service key, the server MUST reply with a list of zero or more claims for that token inside of a `draft/authtoken` batch with the service key as its parameter. Each claim is a `TOKEN` message with the following syntax:
 
 ```
 TOKEN CLAIM <key> :<value>
@@ -191,10 +189,10 @@ Response to the client sending a single `TOKEN VALIDATE` command. The server pro
 
 ```
 Client:
-TOKEN VALIDATE FILEHOST https://upload.example.com :54a333f6e0c218382ab5f64c1135f07798d0255e87115c451ba67cc440f5ea84
+TOKEN VALIDATE FILEHOST 54a333f6e0c218382ab5f64c1135f07798d0255e87115c451ba67cc440f5ea84
 
 Server:
-BATCH +12345 draft/authtoken FILEHOST https://upload.example.com
+BATCH +12345 draft/authtoken FILEHOST
 @batch=12345 TOKEN CLAIM account :moonmoon
 @batch=12345 TOKEN CLAIM member_of :#chat #help #channel1 #channel2 #channel3
 @batch=12345 TOKEN CLAIM member_of : #channel4 #channel5
@@ -208,15 +206,15 @@ BATCH -12345
 Syntax:
 
 ```
-BATCH +<id> draft/authtoken <service> <url>
+BATCH +<id> draft/authtoken <service>
 @batch=<id> TOKEN VALIDATE :<token>
 (send additional TOKEN VALIDATE lines as necessary until the full token is sent)
 BATCH -<id>
 ```
 
-If a non-batched `TOKEN VALIDATE` command exceeds IRC line length protocol limits, the batched form described here MUST be used instead. Before sending a batched `TOKEN VALIDATE`, clients MUST first negotiate the draft/authtoken capability. This variation omits the service and URL parameters from the `TOKEN VALIDATE` command as they are present in the `BATCH` command instead. The token parameter for each message inside of the batch SHOULD be no longer than 400 bytes, to prevent issues with server-side rejection or truncation of overlong messages.
+If a non-batched `TOKEN VALIDATE` command exceeds IRC line length protocol limits, the batched form described here MUST be used instead. Before sending a batched `TOKEN VALIDATE`, clients MUST first negotiate the draft/authtoken capability. This variation omits the service parameter from the `TOKEN VALIDATE` command as it is present in the `BATCH` command instead. The token parameter for each message inside of the batch SHOULD be no longer than 400 bytes, to prevent issues with server-side rejection or truncation of overlong messages.
 
-The reply to a batched `TOKEN VALIDATE` command is equivalent to that of a non-batched `TOKEN VALIDATE` command, and all of the other considerations of non-batched `TOKEN VALIDATE` commands apply to batched ones as well, such as servers validating the service and URL parameters and potentially requiring some level of authentication before accepting the command.
+The reply to a batched `TOKEN VALIDATE` command is equivalent to that of a non-batched `TOKEN VALIDATE` command, and all of the other considerations of non-batched `TOKEN VALIDATE` commands apply to batched ones as well, such as servers validating the service parameter and potentially requiring some level of authentication before accepting the command.
 
 Clients MUST NOT send batched `TOKEN VALIDATE` commands for tokens that are 200 bytes or less in length.
 
@@ -224,7 +222,7 @@ Example of a client sending a multiline token.
 
 ```
 Client:
-BATCH +a draft/authtoken FILEHOST https://upload.example.com
+BATCH +a draft/authtoken FILEHOST
 @batch=a TOKEN VALIDATE :eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJodHRwczovL3VwbG9hZC5leGFtc
 @batch=a TOKEN VALIDATE :GxlLmNvbSIsInN1YiI6Im1vb25tb29uIiwiYWNjb3VudCI6Im1vb25tb29uIiwic2VydmljZSI
 @batch=a TOKEN VALIDATE :6IkZJTEVIT1NUIiwidGFyZ2V0IjoiI2NoYXQiLCJtZW1iZXJfb2YiOlsiI2NoYXQiLCIjaGVsc
@@ -261,7 +259,7 @@ The following keys are defined:
 
 ## Server implementation considerations
 
-This section is non-normative.
+*This section is non-normative.*
 
 For maximum security, generated tokens should be single-use and have short expiration periods (10-15 minutes) before they can no longer be validated. Providing a random string as the token is sufficient for this, instead of some other format where claims are embedded directly within the token. When listing the claims for such a random string token in the reply to `TOKEN VERIFY`, evaluating things such as channel access at the time `TOKEN VERIFY` is sent rather than caching the original value may make sense so that events such as temporary opping or split-riding can be used to elevate privileges with an external service. Alternatively, make use of the ACLs in the services database rather than actual current op access on a channel to derive permissions-based claims.
 
@@ -269,7 +267,7 @@ For tokens that carry claim data, such as JWTs, the expiration period should sim
 
 ## External service implementation considerations
 
-This section is non-normative.
+*This section is non-normative.*
 
 This specification defines a validation flow wherein the external service receives a token via some means from a client, connects to an IRC port, and issues a `TOKEN VALIDATE` command to transform that token into a list of claims. This is robust and works with all token types potentially generated by `TOKEN GENERATE` (including claims-bearing tokens such as JWTs), and allows the external service to delegate token validity checking to the IRC server (allowing for token revocation to occur and avoiding other potential causes of security issues).
 
