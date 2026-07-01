@@ -17,9 +17,9 @@ copyrights:
 
 This is a work-in-progress specification.
 
-Software implementing this work-in-progress specification MUST NOT use the unprefixed `authtoken` capability name, `AUTHTOKEN` ISUPPORT name, or `authtoken` batch type. Instead, implementations SHOULD use the `draft/authtoken` capability name, `draft/AUTHTOKEN` ISUPPORT name, and `draft/authtoken` batch type to be interoperable with other software implementing a compatible work-in-progress version.
+Software implementing this work-in-progress specification MUST NOT use the unprefixed `authtoken` capability name or `authtoken` batch type. Instead, implementations SHOULD use the `draft/authtoken` capability name and `draft/authtoken` batch type to be interoperable with other software implementing a compatible work-in-progress version.
 
-The final version of the specification will use an unprefixed capability name, ISUPPORT name, and batch type.
+The final version of the specification will use an unprefixed capability name and batch type.
 
 ## Introduction
 
@@ -31,21 +31,35 @@ This specification makes no assumptions that the external service is run by the 
 
 ## Dependencies
 
-This specification depends on the [`batch`][] capability which MUST be negotiated to use the `TOKEN` command. This specification additionally defines the `draft/authtoken` capability. The order of capability negotiation is not significant and MUST NOT be enforced.
+This specification depends on the [`batch`][] capability which MUST be negotiated to use authentication tokens. This specification additionally defines the `draft/authtoken` capability. The order of capability negotiation is not significant and MUST NOT be enforced.
 
 This specification additionally makes use of the [standard replies][] and [client-initiated batch][] frameworks.
 
 ## Capability
 
-If a client negotiates the `draft/authtoken` capability prior to completing registration with the network, the output of the `TOKEN SERVICELIST` subcommand MUST be attached to the registration burst any time after sending ISUPPORT and before sending any LUSERS or MOTD output.
+This specification defines a new capability named `draft/authtoken`. This capability is defined by the following [ABNF grammar][]:
 
-Clients who negotiate the `draft/authtoken` capability MUST additionally be notified on any changes to the service list. These notifications take the form `TOKEN NEW <service key> <url>` and `TOKEN DEL <service key>`. Servers MAY omit `TOKEN DEL` if an existing service is changing its URL (sending only `TOKEN NEW` with the updated URL).
+```
+capability = "draft/authtoken" ["=" tokens]
+tokens     = token *("," token)
+token      = key ["=" value]
+key        = 1*(%x61-7A / DIGIT / "_" / "." / "/" / "-")
+             ; represents the regex [a-z0-9_./-]+
+value      = *(ALPHA / DIGIT / "_" / "." / "/" / "-")
+             ; represents the regex [A-Za-z0-9_./-]*
+```
 
-Servers MUST NOT require that clients negotiate the `draft/authtoken` capability before making use of the `TOKEN` command.
+The following tokens are defined by this specification:
 
-## ISUPPORT token
+- `client-batch`: If present, indicates the server supports receiving client-initiated `draft/authtoken` batches. This token has no value and clients MUST ignore any value sent with it.
 
-This specification defines one ISUPPORT token. Servers MUST publish the `draft/AUTHTOKEN` ISUPPORT token to indicate they support this specification. The token does not have any value, but clients MUST NOT reject tokens published with a value, to allow for future revisions to this specification. Servers SHOULD additionally support [extended ISUPPORT][] since token verification can happen before connection registration is complete, so clients can determine the implementation status of this extension before sending any TOKEN commands.
+Clients MUST silently ignore any unknown tokens.
+
+## Notifications
+
+If a client negotiates both the `batch` and `draft/authtoken` capabilities prior to completing registration with the network, the output of the `TOKEN SERVICELIST` subcommand MUST be attached to the registration burst any time after sending ISUPPORT and before sending any LUSERS or MOTD output.
+
+Clients who negotiate both the `batch` and `draft/authtoken` capabilities MUST additionally be notified on any changes to the service list. These notifications take the form `TOKEN NEW <service key> <url>` and `TOKEN DEL <service key>`. Servers MAY omit `TOKEN DEL` if an existing service is changing its URL (sending only `TOKEN NEW` with the updated URL).
 
 ## `draft/authtoken` batch type
 
@@ -57,7 +71,7 @@ A client MUST negotiate the `draft/authtoken` capability before sending client-i
 
 ## TOKEN command
 
-This specification defines one new command named TOKEN. Clients do not need to negotiate any capabilities in order to use this command. The command has three subcommands, which are defined as follows:
+This specification defines one new command named TOKEN. Servers MUST NOT require that clients negotiate the `draft/authtoken` capability before making use of the `TOKEN` command. The command has three subcommands, which are defined as follows:
 
 ```
 TOKEN SERVICELIST
@@ -130,7 +144,7 @@ Each line of output is a `TOKEN` message with the following syntax:
 TOKEN GENERATE <service> :<token>
 ```
 
-If the reply contains multiple lines (due to IRC line length limitations), the server MUST batch the reply in a `draft/authtoken` batch. The batch MUST have the service key as its first parameter. `TOKEN GENERATE` messages inside of the batch SHOULD use asterisks (`*`) for the service parameter instead of specifying them again for each batch line. When receiving a batched reply, clients MUST concatenate the token parameters together without any separators to form the complete token. If a server does not support the draft/authtoken capability, it MUST NOT generate tokens that require multiple lines.
+If the reply contains multiple lines (due to IRC line length limitations), the server MUST batch the reply in a `draft/authtoken` batch. The batch MUST have the service key as its first parameter. `TOKEN GENERATE` messages inside of the batch SHOULD use asterisks (`*`) for the service parameter instead of specifying them again for each batch line. When receiving a batched reply, clients MUST concatenate the token parameters together without any separators to form the complete token.
 
 Clients MUST NOT assume that the returned token has any particular format. Clients SHOULD re-run `TOKEN GENERATE` each time they need to interact with the external service, as there is no guarantee that a token is usable more than once.
 
@@ -214,9 +228,9 @@ BATCH -<id>
 
 If a non-batched `TOKEN VALIDATE` command exceeds IRC line length protocol limits, the batched form described here MUST be used instead. Before sending a batched `TOKEN VALIDATE`, clients MUST first negotiate the draft/authtoken capability. This variation omits the service parameter from the `TOKEN VALIDATE` command as it is present in the `BATCH` command instead. The token parameter for each message inside of the batch SHOULD be no longer than 400 bytes, to prevent issues with server-side rejection or truncation of overlong messages.
 
-The reply to a batched `TOKEN VALIDATE` command is equivalent to that of a non-batched `TOKEN VALIDATE` command, and all of the other considerations of non-batched `TOKEN VALIDATE` commands apply to batched ones as well, such as servers validating the service parameter and potentially requiring some level of authentication before accepting the command.
+If the server does not support client-initiated `draft/authtoken` batches (i.e. does not publish the `client-batch` token as part of the `draft/authtoken` CAP value), it SHOULD respond to such batches with `FAIL BATCH UNKNOWN_TYPE` as defined by the [client-initiated batch][] specification, but MAY respond with other errors such as the `421 ERR_UNKNOWNCOMMAND` numeric instead.
 
-Clients MUST NOT send batched `TOKEN VALIDATE` commands for tokens that are 200 bytes or less in length.
+Otherwise, the reply to a batched `TOKEN VALIDATE` command is equivalent to that of a non-batched `TOKEN VALIDATE` command, and all of the other considerations of non-batched `TOKEN VALIDATE` commands apply to batched ones as well, such as servers validating the service parameter and potentially requiring some level of authentication before accepting the command.
 
 Example of a client sending a multiline token.
 
@@ -261,7 +275,7 @@ The following keys are defined:
 
 *This section is non-normative.*
 
-For maximum security, generated tokens should be single-use and have short expiration periods (10-15 minutes) before they can no longer be validated. Providing a random string as the token is sufficient for this, instead of some other format where claims are embedded directly within the token. When listing the claims for such a random string token in the reply to `TOKEN VERIFY`, evaluating things such as channel access at the time `TOKEN VERIFY` is sent rather than caching the original value may make sense so that events such as temporary opping or split-riding can be used to elevate privileges with an external service. Alternatively, make use of the ACLs in the services database rather than actual current op access on a channel to derive permissions-based claims.
+For maximum security, generated tokens should be single-use and have short expiration periods (10-15 minutes) before they can no longer be validated. Providing a random string as the token is sufficient for this, instead of some other format where claims are embedded directly within the token. When listing the claims for such a random string token in the reply to `TOKEN VERIFY`, evaluating things such as channel access at the time `TOKEN VERIFY` is sent rather than caching the original value may make sense so that events such as temporary opping or split-riding cannot be used to elevate privileges with an external service. Alternatively, make use of the ACLs in the services database rather than actual current op access on a channel to derive permissions-based claims.
 
 For tokens that carry claim data, such as JWTs, the expiration period should similarly be short. For servers which carry state data regarding generated tokens, the "jti" claim for JWTs (or a similar type of claim for other token types) should be used to prevent token re-use. All such tokens containing claim data should be signed. For tokens where interactive validation is expected, signing with a secret key is sufficient as the key does not need to be shared between multiple parties. For tokens where non-interactive validation is possible or expected, signing with public key encryption is preferable to avoid sharing secrets between multiple parties and so other parties cannot spoof signed tokens. If signing is employed with shared secrets despite the previous advice, a different shared secret should be used per service.
 
@@ -292,7 +306,6 @@ The following standard replies are defined with these parameters. The text of th
 | `FAIL` | `INTERNAL_ERROR`   | `:The requested action could not be completed due to an internal error`             |
 | `FAIL` | `INVALID_SCOPE`    | `<scope> :The provided scope is invalid`                                            |
 | `FAIL` | `INVALID_TOKEN`    | `:The provided token could not be validated`                                        |
-| `FAIL` | `NEED_CAPABILITY`  | `<capability> :You must have the <capability> capability before using this command` |
 | `FAIL` | `NO_PERMISSIONS`   | `<scope> :You do not have permission to generate a <service> token for <scope>`     |
 | `FAIL` | `NO_PERMISSIONS`   | `<service> :You do not have permission to validate <service> tokens`                |
 | `FAIL` | `TIMEOUT`          | `:Timeout exceeded while waiting for the complete token to validate`                |
@@ -308,15 +321,14 @@ Reference table of standard replies codes and the TOKEN subcommands that produce
 | `INTERNAL_ERROR`   | *           | *        | *        |       |
 | `INVALID_SCOPE`    |             | *        |          |       |
 | `INVALID_TOKEN`    |             |          | *        |       |
-| `NEED_CAPABILITY`  |             | *        | *        |       |
 | `NO_PERMISSIONS`   |             | *        | *        |       |
 | `NO_SERVICES`      | *           |          |          |       |
 | `TIMEOUT`          |             |          | *        |       |
 | `UNKNOWN_COMMAND`  |             |          |          | *     |
 | `UNKNOWN_SERVICE`  |             | *        |          |       |
 
+[ABNF grammar]: https://www.rfc-editor.org/rfc/rfc5234
 [`batch`]: ../extensions/batch.html
 [capability negotiation]: ../extensions/capability-negotiation.html
 [client-initiated batch]: ../extensions/client-batch.html
-[extended ISUPPORT]: ../extensions/extended-isupport.html
 [standard replies]: ../extensions/standard-replies.html
