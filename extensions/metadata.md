@@ -140,21 +140,24 @@ The `metadata-subs` batch type takes no parameters and clients MUST ignore any p
 
 The following numerics are reserved for metadata, with these labels and parameters:
 
-| No. | Label                     | Parameters                               |
-| --- | ------------------------- | ---------------------------------------- |
-| 760 | `RPL_WHOISKEYVALUE`       | `<Target> <Key> <Visibility> :<Value>`   |
-| 761 | `RPL_KEYVALUE`            | `<Target> <Key> <Visibility> :<Value>`   |
-| 766 | `RPL_KEYNOTSET`           | `<Target> <Key> :Key not set`            |
-| 770 | `RPL_METADATASUBOK`       | `<Key1> [<Key2> ...]`                    |
-| 771 | `RPL_METADATAUNSUBOK`     | `<Key1> [<Key2> ...]`                    |
-| 772 | `RPL_METADATASUBS`        | `<Key1> [<Key2> ...]`                    |
-| 774 | `RPL_METADATASYNCLATER`   | `<Target> <RetryAfter> :Try again later` |
+| No. | Label                     | Parameters                                       |
+| --- | ------------------------- | ------------------------------------------------ |
+| 760 | `RPL_WHOISKEYVALUE`       | `<Target> <Key> <Visibility> :<Value>`           |
+| 761 | `RPL_KEYVALUE`            | `<Target> <Key> <Visibility> :<Value>`           |
+| 766 | `RPL_KEYNOTSET`           | `<Target> <Key> :Key not set`                    |
+| 770 | `RPL_METADATASUBOK`       | `<Key1> [<Key2> ...]`                            |
+| 771 | `RPL_METADATAUNSUBOK`     | `<Key1> [<Key2> ...]`                            |
+| 772 | `RPL_METADATASUBS`        | `<Key1> [<Key2> ...]`                            |
+| 774 | `ERR_METADATASYNCLATER`   | `<Target> <RetryAfter> :Try again later`         |
+| 775 | `ERR_METADATARATELIMIT`   | `<RetryAfter> <Target> <Command> [<Params> ...]` |
 
-The trailing parameter of `766 RPL_KEYNOTSET` and `774 RPL_METADATASYNCLATER` MAY vary wildly between implementations.
+The trailing parameter of `766 RPL_KEYNOTSET` and `774 ERR_METADATASYNCLATER` MAY vary wildly between implementations.
 
-The `<RetryAfter>` parameter of `774 RPL_METADATASYNCLATER` MUST be a non-negative integer. This parameter indicates the number of seconds clients SHOULD wait before re-trying the command.
+The `<RetryAfter>` parameter of `774 ERR_METADATASYNCLATER` and `775 ERR_METADATARATELIMIT` MUST be a non-negative integer. This parameter indicates the number of seconds clients SHOULD wait before re-trying the command.
 
 The `<Visibility>` parameter of `760 RPL_WHOISKEYVALUE` and `761 RPL_KEYVALUE` is an asterisk (`*`) for keys visible to everyone, or an implementation-defined value which describes the key’s visibility status; for instance, it MAY be a permission level or flag.
+
+The `<Target>`, `<Command>`, and `<Params>` parameters of `775 ERR_METADATARATELIMIT` reflect the target, subcommand, and any additional parameters that were passed into the rate-limited command, so that clients can re-send the command without needing stateful tracking of what was originally sent.
 
 The following [standard reply](../extensions/standard-replies.html) codes are used in this specification, with these labels and parameters:
 
@@ -165,16 +168,13 @@ The following [standard reply](../extensions/standard-replies.html) codes are us
 | `INVALID_TARGET`        | `<Target> :Invalid metadata target`            |
 | `INVALID_VALUE`         | `<Key> :Invalid value`                         |
 | `KEY_NO_PERMISSION`     | `<Target> <Key> :Permission denied`            |
-| `LIMIT_REACHED`         | `<Item> <Limit> :Limit reached`                |
-| `RATE_LIMITED`          | `<Target> <Key> <RetryAfter> :Try again later` |
+| `LIMIT_REACHED`         | `<Command> <Item> <Limit> :Limit reached`      |
 
 The trailing parameter containing the descriptive message MAY vary wildly between implementations and SHOULD contain a relevant description for the specific error encountered.
 
-The `<Command>` parameter of `INVALID_PARAMS` is the subcommand specified by the client, or an asterisk (`*`) if no subcommand was provided or the subcommand is not valid as a middle parameter.
+The `<Command>` parameter of `INVALID_PARAMS` and `LIMIT_REACHED` is the subcommand specified by the client, or an asterisk (`*`) if no subcommand was provided or the subcommand is not valid as a middle parameter.
 
 The `<Item>` parameter of `LIMIT_REACHED` will be the target if the metadata limit for a particular target was reached while performing [`METADATA SET`](#metadata-set) or the key name unable to be subscribed to if the subscription limit was reached while performing [`METADATA SUB`](#metadata-sub).
-
-The `<RetryAfter>` parameter of `RATE_LIMITED` MUST be a non-negative integer. This parameter indicates the number of seconds clients SHOULD wait before re-trying the command.
 
 ## Notifications
 
@@ -195,23 +195,23 @@ The notification framework provides clients updates on metadata keys for visible
 
 If the `draft/metadata-3` capability was negotiated during connection registration, servers MUST send clients a list of their current metadata (any metadata stored by the server or by services, plus any metadata set by the client during connection registration via `before-connect`) in a `metadata` batch with their own nick as target as part of the registration burst, i.e. before `RPL_ENDOFMOTD` or `ERR_NOMOTD`. This batch MUST include all visible keys set on the client, irrespective of whether the client has subscribed to that key.
 
-When server sends `730 RPL_MONONLINE` to a metadata-aware client (see [`MONITOR`](../extensions/monitor.html#monitor-command)), the server MUST additionally send either a `metadata` batch containing the monitored user's metadata to the client or a `774 RPL_METADATASYNCLATER` message to indicate postponed synchronization. If the server sends a batch, the batch MUST be identical to what would be returned if [`METADATA SYNC`](#metadata-sync) was issued against that target.
+When server sends `730 RPL_MONONLINE` to a metadata-aware client (see [`MONITOR`](../extensions/monitor.html#monitor-command)), the server MUST additionally send either a `metadata` batch containing the monitored user's metadata to the client or a `774 ERR_METADATASYNCLATER` message to indicate postponed synchronization. If the server sends a batch, the batch MUST be identical to what would be returned if [`METADATA SYNC`](#metadata-sync) was issued against that target.
 
-When a metadata-aware client joins a channel, the server MUST send either a `metadata` batch containing the channel's metadata as well as the metadata for all users on the channel or a `774 RPL_METADATASYNCLATER` message to indicate postponed synchronization. If the server sends a batch, the batch MUST be identical to what would be returned if [`METADATA SYNC`](#metadata-sync) was issued against that channel.
+When a metadata-aware client joins a channel, the server MUST send either a `metadata` batch containing the channel's metadata as well as the metadata for all users on the channel or a `774 ERR_METADATASYNCLATER` message to indicate postponed synchronization. If the server sends a batch, the batch MUST be identical to what would be returned if [`METADATA SYNC`](#metadata-sync) was issued against that channel.
 
 ## Postponed synchronization
 
-Servers MAY respond with `774 RPL_METADATASYNCLATER` to certain types of automatic synchronization as well as to the [`METADATA SYNC`](#metadata-sync) command for implementation-defined reasons, such as joining a channel with too many users or internal rate-limiting. This numeric indicates that the client SHOULD request synchronization of that target's metadata at a later time.
+Servers MAY respond with `774 ERR_METADATASYNCLATER` to certain types of automatic synchronization as well as to the [`METADATA SYNC`](#metadata-sync) command for implementation-defined reasons, such as joining a channel with too many users or internal rate-limiting. This numeric indicates that the client SHOULD request synchronization of that target's metadata at a later time.
 
 The client can use the `METADATA SYNC` command to request the synchronization of metadata for the given target. If the `<RetryAfter>` parameter of the numeric is nonzero, the client SHOULD wait at least that many seconds before sending the synchronization request.
 
-Clients SHOULD deduplicate `774 RPL_METADATASYNCLATER` numerics that they receive based on the numeric's target and only send one `METADATA SYNC` command for that target to the server after the `<RetryAfter>` waiting period.
+Clients SHOULD deduplicate `774 ERR_METADATASYNCLATER` numerics that they receive based on the numeric's target and only send one `METADATA SYNC` command for that target to the server after the `<RetryAfter>` waiting period.
 
 *[[Begin non-normative examples--*
 
 These examples assume the client has previously enabled the [no-implicit-names](../extensions/no-implicit-names.html) capability and has subscribed to the `display-name` metadata key for brevity.
 
-A metadata-aware client joins multiple channels and the server responds with `774 RPL_METADATASYNCLATER` to each of those joins with a target of `*ALL`. The client deduplicates these and sends only one `METADATA *ALL SYNC` after all channel joins are complete. This server implementation additionally responds with `766 RPL_KEYNOTSET` for subscribed keys that are not set on the target or are not visible to the user.
+A metadata-aware client joins multiple channels and the server responds with `774 ERR_METADATASYNCLATER` to each of those joins with a target of `*ALL`. The client deduplicates these and sends only one `METADATA *ALL SYNC` after all channel joins are complete. This server implementation additionally responds with `766 RPL_KEYNOTSET` for subscribed keys that are not set on the target or are not visible to the user.
 
     C: JOIN #chan1,#chan2,#chan3,#chan4
     S: :modernclient!modernclient@example.com JOIN #chan1
@@ -234,7 +234,7 @@ A metadata-aware client joins multiple channels and the server responds with `77
     ... and many more messages
     S: BATCH -r2Nla
 
-A metdata-aware client joins a large channel and the server responds with `774 RPL_METADATASYNCLATER` with a defined delay. After the initial delay, the server is still not ready to process the command. This server implementation additionally omits subscribed keys that are not set on the target or are not visible to the user.
+A metdata-aware client joins a large channel and the server responds with `774 ERR_METADATASYNCLATER` with a defined delay. After the initial delay, the server is still not ready to process the command. This server implementation additionally omits subscribed keys that are not set on the target or are not visible to the user.
 
     C: JOIN #bigchannel
     S: :modernclient!modernclient@example.com JOIN #bigchannel
@@ -264,7 +264,7 @@ Clients MAY use this command during connection registration if the server advert
 
 If the server receives a syntactically invalid `METADATA` command, e.g., an unknown subcommand, missing parameters, or excess parameters, the server SHOULD reply with `FAIL METADATA INVALID_PARAMS`. If an existing error numeric such as `461 ERR_NEEDMOREPARAMS` is appropriate, it MAY be used instead.
 
-Servers MAY rate limit any `METADATA` subcommand. If they do so and a client is rate limited, servers SHOULD send `FAIL METADATA RATE_LIMITED` indicating the client SHOULD retry the `METADATA` request at a later time.
+Servers MAY rate limit any `METADATA` subcommand. If they do so and a client is rate limited, servers SHOULD send `775 ERR_METADATARATELIMIT` indicating the client SHOULD retry the `METADATA` request at a later time.
 
 *[[Begin non-normative examples--*
 
@@ -338,7 +338,7 @@ The server responds with one or more of the following responses:
 
 If the client does not have permission to view a given key, the server MAY send a `NOTE METADATA KEY_NO_PERMISSION` reply to the client. The subscription MUST still be successful and that key MUST appear in a `770 RPL_METADATASUBOK` reply. In this case, the `NOTE METADATA KEY_NO_PERMISSION` reply serves as a notice indicating that the client will not receive notifications about this key unless it gains the necessary (implementation-defined) privileges later.
 
-After finishing sending responses as described above, if the client has completed connection registration and has added new subscriptions, the server MUST then either send a `metadata` batch with `*ALL` as its parameter containing the current values of all newly-subscribed keys visible to the user for all visible targets or a `774 RPL_METADATASYNCLATER` message with `*ALL` as its `<Target>` to indicate [postponed synchronization](#postponed-synchronization). In the event that the client has also negotiated [`labeled-response`](../extensions/labeled-response.html), the `metadata` batch MUST be nested within the `labeled-response` batch.
+After finishing sending responses as described above, if the client has completed connection registration and has added new subscriptions, the server MUST then either send a `metadata` batch with `*ALL` as its parameter containing the current values of all newly-subscribed keys visible to the user for all visible targets or a `774 ERR_METADATASYNCLATER` message with `*ALL` as its `<Target>` to indicate [postponed synchronization](#postponed-synchronization). In the event that the client has also negotiated [`labeled-response`](../extensions/labeled-response.html), the `metadata` batch MUST be nested within the `labeled-response` batch.
 
 *[[Begin non-normative example--*
 
@@ -347,7 +347,7 @@ The client is joined to #chan (sharing the channel with userA, userB, and userC)
     C: METADATA * SUB display-name status super-secret-key avatar
     S: :irc.example.com 770 modernclient display-name status super-secret-key
     S: :irc.example.com NOTE METADATA KEY_NO_PERMISSION SUB * super-secret-key :You do not have permission to view this key
-    S: :irc.example.com WARN METADATA LIMIT_REACHED SUB avatar 3 :Cannot subscribe to "avatar" as you have reached the subscription limit
+    S: :irc.example.com FAIL METADATA LIMIT_REACHED SUB avatar 3 :Cannot subscribe to "avatar" as you have reached the subscription limit
     S: :irc.example.com BATCH +d8amD metadata *
     S: @batch=d8amD :irc.example.com 761 modernclient #chan display-name :Cool Channel
     S: @batch=d8amD :irc.example.com 761 modernclient userA display-name :User A
@@ -386,7 +386,7 @@ If the client does not have permission to view a given subscribed key, the serve
 
 Clients use this subcommand to receive all subscribed metadata from the given target. If the target is a channel, it also synchronizes the metadata for all other users in that channel. If the target is an asterisk followed by uppercase "ALL" (`*ALL`), it synchronizes metadata for all visible targets.
 
-If the sync cannot be performed at this time (due to load or other implementation-defined details), the server responds with a `774 RPL_METADATASYNCLATER` indicating [postponed synchronization](#postponed-synchronization). If the sync can be performed, the server responds with a `metadata` batch containing zero or more of the following messages for each key the client is subscribed to:
+If the sync cannot be performed at this time (due to load or other implementation-defined details), the server responds with a `774 ERR_METADATASYNCLATER` indicating [postponed synchronization](#postponed-synchronization). If the sync can be performed, the server responds with a `metadata` batch containing zero or more of the following messages for each key the client is subscribed to:
 
 * `761 RPL_KEYVALUE` with the key's value
 * `766 RPL_KEYNOTSET` indicating the key is not set or the key is not visible to the requesting client
@@ -416,7 +416,7 @@ Servers with traditional send queue setups should ensure that they do not discon
 
 Servers may wish to provide network administrators the ability to configure an allowlist or denylist of metadata keys. They may also wish to reserve certain keys or patterns of keys as requiring elevated permissions to view or modify, to allow network administrators the ability to use `METADATA` as a secure key:value store for network operations or to ensure certain keys are only writable by services.
 
-When responding with `FAIL METADATA RATE_LIMITED` or `774 RPL_METADATASYNCLATER`, servers should attempt to provide a usable value for the `<RetryAfter>` parameter, to avoid clients flooding the server with retries. A server is not required to accept the command after the provided RetryAfter period and may still rate-limit the client at that time. This provides a middle ground for servers that do not wish to publish precise rate-limit details to clients while ensuring clients do not attempt to retry commands too aggressively.
+When responding with `774 ERR_METADATASYNCLATER` or `775 ERR_METADATARATELIMIT`, servers should attempt to provide a usable value for the `<RetryAfter>` parameter, to avoid clients flooding the server with retries. A server is not required to accept the command after the provided RetryAfter period and may still rate-limit the client at that time. This provides a middle ground for servers that do not wish to publish precise rate-limit details to clients while ensuring clients do not attempt to retry commands too aggressively.
 
 ## Reference tables
 
@@ -430,7 +430,8 @@ Reference table of numerics and the `METADATA` subcommands or any other commands
 | `RPL_METADATASUBOK`                |     |      |     |       | *   |       |      |      |                   |
 | `RPL_METADATAUNSUBOK`              |     |      |     |       |     | *     |      |      |                   |
 | `RPL_METADATASUBS`                 |     |      |     |       |     |       | *    |      |                   |
-| `RPL_METADATASYNCLATER`            |     |      |     |       | *   |       |      | *    | `JOIN`, `MONITOR` |
+| `ERR_METADATASYNCLATER`            |     |      |     |       | *   |       |      | *    | `JOIN`, `MONITOR` |
+| `ERR_METADATARATELIMIT`            | *   | *    | *   | *     | *   | *     | *    | *    |                   |
 
 Reference table of Standard Replies codes and the `METADATA` subcommands or any other commands that produce them:
 
@@ -442,7 +443,6 @@ Reference table of Standard Replies codes and the `METADATA` subcommands or any 
 | `INVALID_VALUE`         |      |      | FAIL      |       |      |       |      |      |         |
 | `KEY_NO_PERMISSION`     | WARN | WARN | FAIL/WARN | WARN  | NOTE |       | NOTE | WARN |         |
 | `LIMIT_REACHED`         |      |      | FAIL      |       | FAIL |       |      |      |         |
-| `RATE_LIMITED`          | FAIL | FAIL | FAIL      | FAIL  | FAIL | FAIL  | FAIL | FAIL | FAIL    |
 
 ## Examples
 
@@ -460,7 +460,7 @@ All examples begin with the client not being subscribed to any keys.
 #### Setting metadata on self, but the limit has been reached
 
     C: METADATA * SET url :http://www.example.com
-    S: FAIL METADATA LIMIT_REACHED 50 :Metadata limit reached
+    S: FAIL METADATA LIMIT_REACHED SET * 50 :Metadata limit reached
 
 #### Setting metadata on another user, without permission
 
@@ -485,7 +485,7 @@ All examples begin with the client not being subscribed to any keys.
 #### Server rate-limits setting metadata
 
     C: METADATA * SET url :http://www.example.com
-    S: FAIL METADATA RATE_LIMITED * url 5 :Rate-limit reached. You're going too fast! Try again in 5 seconds.
+    S: :irc.example.com 775 client 5 * SET url :http://www.example.com
 
 Servers can pick an arbitrary value here, if a client waits that long there is no guarantee the next attempt will not also be rate-limited.
 
@@ -576,7 +576,7 @@ Client waits 6 more seconds:
 
 ### Subscription Examples
 
-Most replies to `METADATA SUB` in these examples send `774 RPL_METADATASYNCLATER` for brevity. A real implementation may wish to more eagerly send `metadata` batches in response to `METADATA SUB`.
+Most replies to `METADATA SUB` in these examples send `774 ERR_METADATASYNCLATER` for brevity. A real implementation may wish to more eagerly send `metadata` batches in response to `METADATA SUB`.
 
 #### Basic subscriping and unsubscribing
 
@@ -611,7 +611,7 @@ The client first successfully subscribes to some keys and later it tries to subs
     S: :irc.example.com 770 modernclient website avatar foo bar baz
     S: :irc.example.com 774 modernclient *ALL 5 :Please run SYNC later
     C: METADATA * SUB email city
-    S: FAIL METADATA LIMIT_REACHED email 5 :Too many subscriptions!
+    S: FAIL METADATA LIMIT_REACHED SUB email 5 :Too many subscriptions!
     S: :irc.example.com 774 modernclient *ALL 5 :Please run SYNC later
     C: METADATA * SUBS
     S: :irc.example.com BATCH +c2LO6 metadata-subs
@@ -625,7 +625,7 @@ This is like the previous case, except when the second METADATA SUB happens the 
     C: METADATA * SUB website avatar foo
     S: :irc.example.com 770 modernclient website avatar foo
     C: METADATA * SUB email city country bar baz
-    S: FAIL METADATA LIMIT_REACHED country 5 :Too many subscriptions!
+    S: FAIL METADATA LIMIT_REACHED SUB country 5 :Too many subscriptions!
     S: :irc.example.com 770 modernclient email city
     S: :irc.example.com 774 modernclient *ALL 5 :Please run SYNC later
     C: METADATA * SUBS
@@ -642,7 +642,7 @@ The client, however, successfully subscribes to the `foo` key which was also in 
     S: :irc.example.com 770 modernclient avatar website
     S: :irc.example.com 774 modernclient *ALL 5 :Please run SYNC later
     C: METADATA * SUB foo website avatar
-    S: FAIL METADATA LIMIT_REACHED website 3 :Too many subscriptions!
+    S: FAIL METADATA LIMIT_REACHED SUB website 3 :Too many subscriptions!
     S: :irc.example.com 770 modernclient :foo
     S: :irc.example.com 774 modernclient *ALL 5 :Please run SYNC later
     C: METADATA * SUBS
@@ -702,7 +702,7 @@ In this case, there are no `772 RPL_METADATASUBS` numerics sent.
 
 #### Subscribing to the same key multiple times 1
 
-No `metadata` batch or `774 RPL_METADATASYNCLATER` response is given to the second `METADATA SUB` because no new keys were subscribed to.
+No `metadata` batch or `774 ERR_METADATASYNCLATER` response is given to the second `METADATA SUB` because no new keys were subscribed to.
 
     C: METADATA * SUB website avatar foo bar baz
     S: :irc.example.com 779 modernclient website avatar foo bar baz
@@ -820,7 +820,7 @@ Because the client does not have permission to view any of the newly-added keys,
 
 ### Setting keys and subscribing with `before-connect`
 
-`METADATA SUB` does not generate any `metadata` batches or `774 RPL_METADATASYNCLATER` when used before connection registration has completed.
+`METADATA SUB` does not generate any `metadata` batches or `774 ERR_METADATASYNCLATER` when used before connection registration has completed.
 
     C: CAP LS 302
     S: :metadata.test CAP * LS :batch message-tags draft/metadata-3=before-connect,max-subs=100,max-keys=100
@@ -871,15 +871,16 @@ This specification replaces an earlier deprecated `metadata-notify` specificatio
 * The `SUBCOMMAND_INVALID` standard reply code has been removed. The more generic `INVALID_PARAMS` code should be used in its place.
 * The `KEY_NOT_SET` standard reply code has been removed. With its removal, `METADATA SET` is fully idempotent with regards to its replies.
 * The `TOO_MANY_SUBS` standard reply code has been removed. The `LIMIT_REACHED` standard reply code should be used in its place.
+* The `LIMIT_REACHED` standard reply code gained a `<Command>` parameter to indicate which subcommand the limit is associated with.
 * The `VALUE_INVALID` standard reply code has been renamed to `INVALID_VALUE` for better consistency between this specification and other specifications. It additionally now takes a `<Key>` parameter.
 * The `KEY_INVALID` standard reply code has been renamed to `INVALID_KEY` for better consistency between this specification and other specifications.
-* The `RATE_LIMITED` standard reply code is now specified for every subcommand.
+* The `RATE_LIMITED` standard reply code was replaced with the `775 ERR_METADATARATELIMIT` numeric and is now specified for every subcommand.
 * The `INVALID_PARAMS` standard reply code has been added for all other errors with `METADATA` command parameters.
 * Standard reply codes have been adjusted to use `WARN` and `NOTE` when and where appropriate. `FAIL` is reserved for when the entire command cannot proceed due to an error. `WARN` is used when a portion of a command cannot proceed but other parts may still proceed. `NOTE` is used when a portion of a command is fully successful but needs ancillary data.
 * The `*ALL` target has been specified for `METADATA SYNC` to synchronize all visible targets.
-* Servers sending either a `metadata` batch or `774 RPL_METADATASYNCLATER` upon `JOIN`, `730 RPL_MONONLINE`, or when a client subscribes to a new key post-registration is no longer optional.
+* Servers sending either a `metadata` batch or `774 ERR_METADATASYNCLATER` upon `JOIN`, `730 RPL_MONONLINE`, or when a client subscribes to a new key post-registration is no longer optional.
 * Clients removing either the metadata or batch CAPs from themselves are now automatically unsubscribed from all keys.
-* The `<RetryAfter>` parameter of `774 RPL_METADATASYNCLATER` and `RATE_LIMITED` is no longer optional and must be a non-negative integer.
+* The `<RetryAfter>` parameter of `774 ERR_METADATASYNCLATER` and `775 ERR_METADATARATELIMIT` is no longer optional and must be a non-negative integer.
 * A `max-key-bytes` token was added to the CAP value to limit the maximum number of bytes a metadata key may consume.
 * The `before-connect` token in the CAP value list was clarified to not have its own value and that clients must ignore any value it carries.
 * CAP value tokens which specify maximum lengths or numbers of entries (i.e. `max-key-bytes`, `max-value-bytes`, `max-keys`, and `max-subs`) are clarified to be unlimited if those tokens are missing from the `CAP LS 302` response.
