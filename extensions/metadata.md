@@ -98,7 +98,9 @@ Clients MUST silently ignore any unknown tokens. If the server does not provide 
 
 If a client removes this capability or the batch capability from themselves, servers MUST clear that client's subscription list.
 
-*[[Begin non-normative examples--*
+### Examples
+
+*This section is non-normative.*
 
 In both of these examples, max-subs is specified but other tokens are not. Clients should assume that max-keys, max-key-bytes, and max-value-bytes have no limit. In practice, the key and value must still fit on a single IRC protocol line despite not having any server-specified limit.
 
@@ -106,8 +108,6 @@ In both of these examples, max-subs is specified but other tokens are not. Clien
     S: CAP * LS :userhost-in-names draft/metadata-3=foo,max-subs=50,bar multi-prefix
     C: CAP LS 302
     S: CAP * LS :draft/metadata-3=max-subs=25 multi-prefix invite-notify
-
-*--End non-normative examples]]*
 
 ## Keys and Values
 
@@ -205,9 +205,9 @@ Servers MAY respond with `774 ERR_METADATASYNCLATER` to certain types of automat
 
 The client can use the `METADATA SYNC` command to request the synchronization of metadata for the given target. If the `<RetryAfter>` parameter of the numeric is nonzero, the client SHOULD wait at least that many seconds before sending the synchronization request.
 
-Clients SHOULD deduplicate `774 ERR_METADATASYNCLATER` numerics that they receive based on the numeric's target and only send one `METADATA SYNC` command for that target to the server after the `<RetryAfter>` waiting period.
+### Examples
 
-*[[Begin non-normative examples--*
+*This section is non-normative.*
 
 These examples assume the client has previously enabled the [no-implicit-names](../extensions/no-implicit-names.html) capability and has subscribed to the `display-name` metadata key for brevity.
 
@@ -250,8 +250,6 @@ A metdata-aware client joins a large channel and the server responds with `774 E
     ... and many more messages
     S: BATCH -M40ad
 
-*--End non-normative examples]]*
-
 ## METADATA client command
 
     METADATA <Target> <Subcommand> [<Param 1> ... [<Param n>]]
@@ -266,7 +264,9 @@ If the server receives a syntactically invalid `METADATA` command, e.g., an unkn
 
 Servers MAY rate limit any `METADATA` subcommand. If they do so and a client is rate limited, servers SHOULD send `775 ERR_METADATARATELIMIT` indicating the client SHOULD retry the `METADATA` request at a later time.
 
-*[[Begin non-normative examples--*
+### Examples
+
+*This section is non-normative.*
 
     C: METADATA
     S: FAIL METADATA INVALID_PARAMS * :Not enough parameters
@@ -276,8 +276,6 @@ Servers MAY rate limit any `METADATA` subcommand. If they do so and a client is 
     S: FAIL METADATA INVALID_PARAMS SNEEZE :Unknown subcommand "SNEEZE"
     C: METADATA #chan :: hi!
     S: FAIL METADATA INVALID_PARAMS * :Unknown subcommand ": hi!"
-
-*--End non-normative examples]]*
 
 ### METADATA GET
 
@@ -313,6 +311,7 @@ Otherwise, the server MUST send a `FAIL METADATA` response with an appropriate e
 * `FAIL METADATA INVALID_TARGET` if the specified target is not valid
 * `FAIL METADATA INVALID_KEY` if the key contains invalid characters or is otherwise deemed invalid by the server
 * `FAIL METADATA KEY_NO_PERMISSION` if the client does not have permission to set keys on the specified target or is otherwise disallowed from setting or removing this key by the server
+* `FAIL METADATA LIMIT_REACHED` if trying to add a new key when the maximum number of keys has already been set on the target
 
 It is not an error if a client attempts to set a key to its current value or remove a nonexistent key; such attempts generate successful responses if there are no other issues with the request.
 
@@ -340,7 +339,9 @@ If the client does not have permission to view a given key, the server MAY send 
 
 After finishing sending responses as described above, if the client has completed connection registration and has added new subscriptions, the server MUST then either send a `metadata` batch with `*ALL` as its parameter containing the current values of all newly-subscribed keys visible to the user for all visible targets or a `774 ERR_METADATASYNCLATER` message with `*ALL` as its `<Target>` to indicate [postponed synchronization](#postponed-synchronization). In the event that the client has also negotiated [`labeled-response`](../extensions/labeled-response.html), the `metadata` batch MUST be nested within the `labeled-response` batch.
 
-*[[Begin non-normative example--*
+### Examples
+
+*This section is non-normative.*
 
 The client is joined to #chan (sharing the channel with userA, userB, and userC) and additionally has userD on their `MONITOR` list, who is currently online. The server is configured to allow a maximum of 3 subscriptions (advertising `max-subs=3` in the `draft/metadata-3` CAP value).
 
@@ -354,8 +355,6 @@ The client is joined to #chan (sharing the channel with userA, userB, and userC)
     S: @batch=d8amD :irc.example.com 761 modernclient userA status :Playing games
     S: @batch=d8amD :irc.example.com 761 modernclient userD display-name :User D
     S: :irc.example.com BATCH -d8amD
-
-*--End non-normative example]]*
 
 ### METADATA UNSUB
 
@@ -407,6 +406,8 @@ As servers may rewrite values set by clients with `METADATA SET`, clients should
 Because servers may choose to omit unset keys or keys that are not visible to the client from `metadata` batches, clients should assume that any subscribed keys missing from a `METADATA SYNC` have been unset in the interim and update local caches accordingly.
 
 Avoid sending more than 12 keys with `METADATA GET`, `METADATA SUB`, or `METADATA UNSUB` unless you know the server is capable of handling more parameters. Old RFCs limited the number of parameters in an IRC message to 15, and some server implementations treat the command itself towards that parameter limit.
+
+Many clients can be configured to automatically join channels upon connect. If a client receives `774 ERR_METADATASYNCLATER` while performing such automatic joins, it should consider ignoring such numerics and instead send a single `METADATA *ALL SYNC` after all automatic joins have been completed. Doing this allows for server-side deduplication of user metadata for users that are present in more than one of the automatically-joined channels and may yield faster results depending on server rate-limiting implementations.
 
 ## Server implementation considerations
 
